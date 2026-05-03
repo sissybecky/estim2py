@@ -28,7 +28,10 @@ s = connection.get_status()  # -> Estim2pyStatus
 # s = connection.set_channel('A',20) # this would work too!
 
 print(f" Battery: is {s.battery}, A:{s.a},B:{s.b},C:{s.c},D:{s.d=},Mode:{s.mode=},Power:{s.power=},Linked:{s.linked=},FW Version:{s.version})")
+# Battery: is 474, A:4,B:60,C:20,D:100,Mode:0,Power:L,Linked:0,FW Version:2.06
+```
 Those are the values right from the box, but I've provided a bunch of methods for ease of use:
+```
 s.get_scaled_level('A')  #-> would return "20", so scaled to what you see on the box, while the underlying serial protocol said "40".
 s.high_power() # -> bool
 s.low_power() # -> bool
@@ -79,13 +82,21 @@ Check the test in `test_connection.py` with the `@pytest.mark.hardware` tag for 
 
 # References
 
+There are a few different Python Estim Implementations and You should know about STPIHKAL.
+
 - **[Estim2bapi](https://github.com/fredhatt/estim2bapi):** My primary source.  I was using this as my library, but the error handling dind't work for me. 
 - **[STPIHKAL](https://buttplug.io/stpihkal/protocols/estim-systems/):** An amazing resource.
-- **[cornertime/2b](https://github.com/cornertime/2b):** A pretty good implementation, though I didn't like the aesthetics of the API.  Also, is basically just a big ball of python in a directory
-- **[Chaturbase E-stim](https://github.com/cb-stimmer/chaturbate-estim-2b):**
+- **[cornertime/2b](https://github.com/cornertime/2b):** A pretty good implementation, but I needed something different.
+- **[Chaturbase E-stim](https://github.com/cb-stimmer/chaturbate-estim-2b):** Neat little library.
 
 # Ethos
 
 Small little objects that do the right thing and get out of the way.
 
-Abstract out the low level protocol nicely, so that you can build a higher level on top of simply.
+Abstract out the low level protocol nicely, so that you can build a higher level on top of it easier.  You still have to be aware of the gory details, switching modes or power H/L will kill the values of A/B (and C/D).
+
+For that matter, we still refer to "C" and "D".
+
+But, with this library, you can be sure about what's going into and out of the box.  That way you can build something cooler!
+
+(That is, assuming I got a few of the details right.  Like that damn channel link!)
