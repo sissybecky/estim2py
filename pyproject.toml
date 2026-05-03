@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "estim2py"
+version = "0.1.0"
+description = "Simple, Quasi-modern connection to an Estim 2B box"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "Public Domain"}
+authors = [
+    {name = "Sissy Becky", email = "sissybecky@gmail.com"}
+]
+dependencies = [
+    # Add any dependencies your class needs here
+]
+
+[tool.hatch.envs.default]
+dependencies = [
+    "pytest",
+    "pytest-mock",
+    "pyserial"
+]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/estim2py"]
+
+[pytest]
+markers = [
+	"hardware: box is plugged in."
+]
