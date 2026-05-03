@@ -1,10 +1,20 @@
 # What
 
-This is a python library to interact with the Estim 2B box.  Does nothing sepecial, it aims to be an easy to use building block for a bigger system.  I've tried my best to make it a modern python library that's easy to use.
+This is a python library to interact with the Estim 2B box.  It does nothing sepecial, but it aims to be an easy to use building block for a bigger system.  I've tried my best to make it a modern python library that's easy to use.
 
 But the best I can do in python is baby babble.
 
+## Version
+
+I'm at the alpha oh-gosh I hope it works stage.
+
+## Pronunciation
+
 It's pronounced "ee stihm twoo pee".
+
+## License
+
+Free use—I mean—Public Domain. I can't in good conscious really copyright this.  See the references section below.
 
 # API
 ## Getting started
@@ -32,7 +42,7 @@ print(f" Battery: is {s.battery}, A:{s.a},B:{s.b},C:{s.c},D:{s.d=},Mode:{s.mode=
 ```
 Those are the values right from the box, but I've provided a bunch of methods for ease of use:
 ```
-s.get_scaled_level('A')  #-> would return "20", so scaled to what you see on the box, while the underlying serial protocol said "40".
+s.get_scaled_level('A')  #-> would return "20", so scaled to what you see on the display of the box, while the underlying serial protocol said "40".
 s.high_power() # -> bool
 s.low_power() # -> bool
 s.linked() # -> bool
@@ -47,13 +57,17 @@ You can test Status's for equality, and it will do the right thing!  Two status'
 
 ```
 m = s.get_mode()
-print(f"Mode [{m.mid}] {m.name} C Param: {m.param_a} D Param: {m.param_b} Notes: {m.notes}")
+print(f"Mode [{m.mid}] {m.name} Param 1: {m.param_a} Param 2: {m.param_b} Notes: {m.notes}")
 ```
+
 I know param_a and param_b are bad names. Sorry.  Submit a bug report if it... uhh... bugs you.
 
-Modes don't have a good equality test.  Just use `status.mode`.
+Right now if the mode only has 1 param, then the other returns none.  I recall reading that in instances where only one param is avaiable to the mode then only 'C' is used.  But I have yet to test it.
+
+Modes don't have a good equality test.  Just use `status.mode`.  It's a number.
 
 You can get details of a mode by number too.
+
 ```
 m = Estim2pyModes.get_mode(0)
 ```
@@ -80,15 +94,6 @@ connection.unlink() # might actually work! Who knows?
 
 Check the test in `test_connection.py` with the `@pytest.mark.hardware` tag for more examples.
 
-# References
-
-There are a few different Python Estim Implementations and You should know about STPIHKAL.
-
-- **[Estim2bapi](https://github.com/fredhatt/estim2bapi):** My primary source.  I was using this as my library, but the error handling dind't work for me. 
-- **[STPIHKAL](https://buttplug.io/stpihkal/protocols/estim-systems/):** An amazing resource.
-- **[cornertime/2b](https://github.com/cornertime/2b):** A pretty good implementation, but I needed something different.
-- **[Chaturbase E-stim](https://github.com/cb-stimmer/chaturbate-estim-2b):** Neat little library.
-
 # Ethos
 
 Small little objects that do the right thing and get out of the way.
@@ -97,6 +102,24 @@ Abstract out the low level protocol nicely, so that you can build a higher level
 
 For that matter, we still refer to "C" and "D".
 
-But, with this library, you can be sure about what's going into and out of the box.  That way you can build something cooler!
+But, with this library, you can be sure about what's going into and out of the box.  That way you can build something cooler.
 
 (That is, assuming I got a few of the details right.  Like that damn channel link!)
+
+# Todo
+
+- Integrate this into the app I'm building.
+- Find bugs. Fix bugs.
+- Find a test subject to test it on win/mac.
+- Iron out clunky bits of the API.
+- Automagickally select the right serial port.  Will take futzing.  I don't realistically have access to a windows device.
+- Maybe a DSL for scripting a bunch of actions together?  I am not sure.  That's going against the ethos.  If I can do it in a tight way, maybe.
+
+# References
+
+There are a few different Python Estim Implementations and You should know about STPIHKAL.
+
+- **[Estim2bapi](https://github.com/fredhatt/estim2bapi):** My primary source.  I was using this as my library, but the error handling dind't work for me. 
+- **[STPIHKAL](https://buttplug.io/stpihkal/protocols/estim-systems/):** An amazing resource.
+- **[cornertime/2b](https://github.com/cornertime/2b):** A pretty good implementation, but I needed something different.
+- **[Chaturbase E-stim](https://github.com/cb-stimmer/chaturbate-estim-2b):** Neat little library.
