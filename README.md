@@ -16,6 +16,13 @@ It's pronounced "ee stihm twoo pee".
 
 Free use—I mean—Public Domain. I can't in good conscious really copyright this.  See the references section below.
 
+# Installing 
+
+Probably something like this, especially if you are using virtual environments. 
+```
+venv/bin/pip install estim2py
+```
+
 # API
 ## Getting started
 ```python
