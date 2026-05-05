@@ -1,3 +1,10 @@
+# v 0.2.1
+## Additions
+- Added Doc strings
+- Added Documentation
+## Changes
+- Fixed a typo
+
 # v 0.2.0
 ## Additions
 - Added a changelog

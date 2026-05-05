@@ -2,12 +2,23 @@ from .__version__ import __version__
 from .status import Estim2pyStatus
 from .connection import Estim2pyConnection
 
+
+# NOTE!  Next refactor, override send and recieve, call super, and then set status
 class Estim2pySimulatedConnection(Estim2pyConnection):
+    """
+    This is a sumulated 2B box, so you don't always have to plug a box in to write code.
+    It should behave exactly like the real box.
+
+    If it doesn't... that's a bug!
+
+    The interface is exactly like Estim2pyConnection.
+    """
     def __init__(self):
         self.serial = None
         self.reset_status()
 
     def reset_status(self):
+        """Manually reset the status to the default state."""
         self.status = Estim2pyStatus(230,0,0,100,100,0,"L",0,__version__)
             
     def get_status(self):

@@ -27,11 +27,24 @@ path = "./src/estim2py/__version__.py"
 dependencies = [
     "pytest",
     "pytest-mock",
+    "ruff",
     "pyserial"
 ]
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
+docs = "env PYTHONPATH=src pydoc -w estim2py"
+lint = "ruff check ."
+build-docs = [
+  "docs",
+  "mkdir -p ./docs/api",
+  "mv *.html ./docs/api/"
+]
+release = [
+  "test",
+  "hatch build",
+  "hatch publish"
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/estim2py"]

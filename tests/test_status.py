@@ -43,6 +43,8 @@ def test_equal():
     bin = b'746:4:30:160:100:5:L:0:2.106\n'
     s = Estim2pyStatus.from_binary(bin)
     t = Estim2pyStatus.from_binary(bin)
+
+    assert s == t
     
 def test_equal_different_battery_and_version():
     bin = b'746:4:30:160:100:5:L:0:2.106\n'
@@ -64,6 +66,7 @@ def test_not_equal():
 
 def test_not_equal_type(a_status):
     assert not a_status == None
+    assert not a_status == "foo"
     
 def items():
     bin = b'746:4:30:160:100:5:L:0:2.106\n'
