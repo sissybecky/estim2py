@@ -124,8 +124,6 @@ But, with this library, you can be sure about what's going into and out of the b
 
 # Todo
 
-- Integrate this into the app I'm building.
-- Find bugs. Fix bugs.
 - Find a test subject to test it on win/mac.
 - Iron out clunky bits of the API.
 - Automagickally select the right serial port.  Will take futzing.  I don't realistically have access to a windows device.
