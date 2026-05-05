@@ -1,6 +1,9 @@
 import serial
 import time
+import logging
 from .status import Estim2pyStatus
+
+logger = logging.getLogger(__name__)
 
 class Estim2pyConnection():
     BAUD = 9600
@@ -19,6 +22,7 @@ class Estim2pyConnection():
             bytesize = self.BYTESIZE,
             parity   = self.PARITY,
             stopbits = self.STOPBITS)
+        
 
     def get_status(self, flush=True):
         # May not be needed https://stackoverflow.com/questions/61596242/pyserial-when-should-i-use-flush#61602365
@@ -28,6 +32,7 @@ class Estim2pyConnection():
         return self.__send("")
 
     def set_channel(self, channel, val):
+        channel = channel.upper()
         if channel not in ['A', 'B', 'C', 'D']: raise ValueError(f"channel argument must be A, B, C, D. was {channel!r}")
         if channel in ['A','B'] and (val > 100 or val < 0): raise ValueError(f"channel value out of range [0-100] was {val}")
         # More experimentation needed prolly
@@ -59,13 +64,21 @@ class Estim2pyConnection():
         return self.__send("M"+str(mode_num))
             
     def __receive(self):
+        logger.debug(f"Sleeping for {self.delay}")
         time.sleep(self.delay)
 
+        logger.debug("Getting all input until a \\n. If things are broken here, this is the problem.")
         # May be different line ending on windows!  Or version?
-        return self.serial.read_until(b"\n")
+
+        input = self.serial.read_until(b"\n")
+        logger.info(f"Received: {input}")
+        return input
 
     def __send(self, out):
         command = out+"\r" # thank you STPIHKAL https://buttplug.io/stpihkal/protocols/estim-systems/
+        logger.info(f"Sending command: {out}")
         self.serial.write(command.encode())
         # need a delay? between read and write? I don't know.
         return Estim2pyStatus.from_binary(self.__receive())
+    
+    

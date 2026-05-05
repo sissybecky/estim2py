@@ -47,7 +47,9 @@ s = connection.get_status()  # -> Estim2pyStatus
 print(f" Battery: is {s.battery}, A:{s.a},B:{s.b},C:{s.c},D:{s.d=},Mode:{s.mode=},Power:{s.power=},Linked:{s.linked=},FW Version:{s.version})")
 # Battery: is 474, A:4,B:60,C:20,D:100,Mode:0,Power:L,Linked:0,FW Version:2.06
 ```
-Those are the values right from the box, but I've provided a bunch of methods for ease of use:
+Those are the values right from the box.
+
+I've provided a bunch of methods for ease of use.  In particular channels are set by a number between 0-100, but are reported as a number between 0-200.
 ```
 s.get_scaled_level('A')  #-> would return "20", so scaled to what you see on the display of the box, while the underlying serial protocol said "40".
 s.high_power() # -> bool
@@ -76,7 +78,14 @@ Modes don't have a good equality test.  Just use `status.mode`.  It's a number.
 You can get details of a mode by number too.
 
 ```
-m = Estim2pyModes.get_mode(0)
+m = Estim2pyMode.get_mode(0)
+```
+
+Or get a dictionary of mode id and it's name.
+
+```
+modes = Estim2pyMode.id_names()
+print(modes[5]) # -> outputs "milk"
 ```
 
 ### More commands

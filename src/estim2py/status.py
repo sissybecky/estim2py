@@ -1,3 +1,5 @@
+from .modes import Estim2pyMode
+
 class Estim2pyStatus:
 
     def __init__(self, battery, a, b, c, d, mode, power, linked, version):
@@ -11,8 +13,9 @@ class Estim2pyStatus:
         self.linked = linked
         self.version = version
 
-    def get_scaled_level(self, param):
-        return getattr(self, param) // 2
+    def get_channel(self, channel):
+        if channel.lower() not in ['a','b','c','d']: raise ValueError(f"channel argument must be A, B, C, D. was {channel!r}")
+        return getattr(self, channel.lower()) // 2
 
     def high_power(self):
         return self.power == "H"
@@ -27,10 +30,22 @@ class Estim2pyStatus:
         return self.linked == 0
 
     def get_mode(self):
-        return Estim2PyModes.get_mode(self.mode)
+        return Estim2pyMode.get_mode(self.mode)
 
+    def as_items(self):
+        return [("battery",self.battery),
+                ("a",self.a),
+                ("b",self.b),
+                ("c",self.c),
+                ("d",self.d),
+                ("mode",self.mode),
+                ("power",self.power),
+                ("linked",self.linked),
+                ("version",self.version)]
+    
     def __eq__(self, other):
-        return (self.a == other.a) and\
+        return isinstance(other, Estim2pyStatus) and\
+            (self.a == other.a) and\
             (self.b == other.b) and\
             (self.c == other.c) and\
             (self.d == other.d) and\

@@ -22,6 +22,10 @@ def test_set_channel_argument_range(chan,val,fake_2b_resp,mock_serial):
     with pytest.raises(ValueError):
         con.set_channel(chan,val)
 
+def test_set_channel_lower_case(fake_2b_resp, mock_serial):
+    con = Estim2pyConnection("COM_FAKE")
+    con.set_channel("a",100)
+        
 @pytest.mark.hardware
 def test_integration(reset_2b_resp):
     con = Estim2pyConnection("/dev/ttyUSB1")
