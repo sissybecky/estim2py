@@ -1,3 +1,12 @@
+# v 0.2.2
+## Additions
+- (Slightly) Better documentation, trying out sphynx
+
+## Changes
+- Fixed logging to be better
+- Added set_to_status which changes all settings of the box to the values of an Estim2Status object 
+- Tweaked timeout and delay a little.  Not convinced it's right.
+
 # v 0.2.1
 ## Additions
 - Added Doc strings

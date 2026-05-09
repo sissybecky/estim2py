@@ -10,6 +10,9 @@ class Estim2pyConnection():
     Connect to the Estim 2b box, and manage communication
 
     All method calls will return an Estim2pyStatus object.
+
+    Note that the timeout and delay values chosen are somewhat arbitrary.
+    If you have any thoughts about what they should be, please get in touch!
     
     args:
     device - the serial device to connect with.
@@ -26,7 +29,7 @@ class Estim2pyConnection():
 
     MODE_MAX = 100
     
-    def __init__(self, device, timeout=0.5, delay=0.05):
+    def __init__(self, device, timeout=2, delay=0.10):
         self.delay = delay
         self.serial = serial.Serial(
             device,
@@ -45,6 +48,43 @@ class Estim2pyConnection():
             
         return self.__send("")
 
+    def set_to_status(self, to_status):
+        """Change all settings to the input status. Returns a success boolean.
+
+        This will cowardly set the link to 0 before trying to send all the statuses
+        Until I figure out what is wrong with channel link.
+        
+        args:
+        to_status (Estim2pyStatus): target status.
+
+        returns:
+        True if all parameters were set, false if there was a mismatch.
+        """
+        self.set_mode(to_status.mode)
+
+        if to_status.high_power():
+            self.high()
+        else:
+            self.low()
+
+        logger.debug("Cowardly setting linked to 0 because of link bug.")
+        to_status.linked = 0
+        # if (to_status.linked == 0): self.unlink else: self.link
+
+        
+        self.set_channel('a', to_status.get_channel('a'))
+        self.set_channel('b', to_status.get_channel('b'))
+        self.set_channel('c', to_status.get_channel('c'))
+        self.set_channel('d', to_status.get_channel('d'))
+
+        current_status = self.get_status()
+        result = current_status == to_status
+
+        if not result:
+            logger.warn(f"Estim2pyConneciton.set_to_status() failed.\nCurrent: {current_status=}\nTarget : {to_status}")  
+        
+        return result
+        
     def set_channel(self, channel, val):
         """Set's the channel to value val.
 

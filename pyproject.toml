@@ -24,21 +24,21 @@ Homepage = "https://github.com/sissybecky/estim2py"
 path = "./src/estim2py/__version__.py"
 
 [tool.hatch.envs.default]
+env-file = ".env"
 dependencies = [
     "pytest",
     "pytest-mock",
     "ruff",
+    "sphinx",
     "pyserial"
 ]
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
-docs = "env PYTHONPATH=src pydoc -w estim2py"
 lint = "ruff check ."
-build-docs = [
-  "docs",
-  "mkdir -p ./docs/api",
-  "mv *.html ./docs/api/"
+docs = [
+  "sphinx-apidoc -o docs/source/ src/estim2py",
+  "sphinx-build docs/source docs/build"
 ]
 release = [
   "test",

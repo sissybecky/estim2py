@@ -29,6 +29,10 @@ def test_reset(driver, default_status, changed_status):
     assert driver.change_all() == changed_status
     driver.target.reset()
     assert driver.get_status() == default_status
+
+def test_set_to_status(driver, default_status, changed_for_set_to_status):
+    assert driver.target.get_status() == default_status
+    assert driver.target.set_to_status(changed_for_set_to_status)
     
 @pytest.fixture
 def default_status():
@@ -49,6 +53,10 @@ def changed_then_power():
 @pytest.fixture
 def changed_then_kill():
     return Estim2pyStatus.from_binary(b"320:0:0:8:24:0:H:1:0.0.1\n")
+
+@pytest.fixture
+def changed_for_set_to_status():
+    return Estim2pyStatus.from_binary(b"320:2:4:8:24:5:H:0:0.0.1\n")
 
 @pytest.fixture
 def driver():

@@ -4,6 +4,10 @@ from .connection import Estim2pyConnection
 from .simulated import Estim2pySimulatedConnection
 from .__version__ import __version__
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 """
 A simple but thorough interface to the Estim 2B box.
 
