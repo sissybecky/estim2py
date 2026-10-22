@@ -2,14 +2,10 @@ from typing import override
 from typing import Any
 import logging
 
-from warnings import deprecated
-
 from .modes import Estim2pyMode
-from .exceptions import Estim2pyError
+from .protocol import Estim2pyBias, detect_protocol, get_protocol, split_status
 
 logger = logging.getLogger(__name__)
-
-NUMBER_OF_COLONS = 9
 
 class Estim2pyStatus:
     """An object that reports back the status of the Estim Box.
@@ -18,8 +14,14 @@ class Estim2pyStatus:
 
     i.e. status.a will return 200 at max power, but get_channel('a') will return 100.
     """
-    def __init__(self, battery:int, a:int, b:int, c:int, d:int, mode:int, power:str, linked:int, version:str):
-        """Not meant for instantiation directly.  But you can if you want I guess?"""
+    def __init__(self, battery:int, a:int, b:int, c:int, d:int, mode:int, power:str, linked:int, version:str,
+                 bias:int|None=None, output_map:int|None=None, warp:int|None=None, ramp:int|None=None,
+                 protocol:str|None=None):
+        """Not meant for instantiation directly.  But you can if you want I guess?
+
+        bias and output_map are only reported by 2.119B and later firmware, warp and ramp only by 2.120B and later.
+        They are None when the firmware does not report them.  What a bias number means depends on the protocol.
+        protocol is the name of the protocol that parsed this status, or None if built by hand."""
         self.battery:int  = battery
         self.a: int = a
         self.b: int = b
@@ -29,6 +31,11 @@ class Estim2pyStatus:
         self.power: str = power
         self.linked: int = linked 
         self.version: str = version
+        self.bias: int | None = bias
+        self.output_map: int | None = output_map
+        self.warp: int | None = warp
+        self.ramp: int | None = ramp
+        self.protocol: str | None = protocol
 
     def get_channel(self, channel: str) -> int:
         """Returns the value of the channel as reported by UI on the box.
@@ -56,6 +63,18 @@ class Estim2pyStatus:
         """Returns True if the box is in low power mode, False otherwise."""
         return self.power == "L"
 
+    def is_dynamic_power(self):
+        """Returns True if the box is in dynamic power mode (beta firmware only), False otherwise."""
+        return self.power == "D"
+
+    def get_bias(self) -> Estim2pyBias | None:
+        """Returns the dynamic bias setting, or None if the firmware does not report it.
+
+        Use this rather than the raw bias attribute, the firmwares number the settings differently."""
+        if self.bias is None:
+            return None
+        return get_protocol(self.protocol or "2.106").bias_from_code(self.bias)
+
     def is_linked(self):
         """Return True if the box is in linked mode, False otherwise."""
         return self.linked == 1
@@ -67,8 +86,8 @@ class Estim2pyStatus:
     def get_mode(self) -> Estim2pyMode:
         """Returns an Estim2pyMode representing the current mode.
 
-        See Estim2pyMode for more information."""
-        return Estim2pyMode.get_mode(self.mode)
+        The mode numbers depend on the firmware, see Estim2pyMode for more information."""
+        return Estim2pyMode.get_mode(self.mode, self.protocol)
 
     def as_items(self) -> tuple[tuple[str,int], tuple[str,int], tuple[str,int], tuple[str,int], tuple[str,int], tuple[str,int], tuple[str,str], tuple[str,int], tuple[str,str]]:
         """Returns an items-like representation of the status.
@@ -95,6 +114,7 @@ class Estim2pyStatus:
         This means you can do Estim2pyStatus == Estim2pyStatus and it will do the right thing!
 
         It ignores battery and version information as "incidental".
+        Bias, output map, warp and ramp are only compared when both statuses have them.
         """
         return isinstance(other, Estim2pyStatus) and\
             (self.a == other.a) and\
@@ -103,7 +123,17 @@ class Estim2pyStatus:
             (self.d == other.d) and\
             (self.mode == other.mode) and\
             (self.power == other.power) and\
-            (self.linked == other.linked)
+            (self.linked == other.linked) and\
+            not self.__beta_changes(other)
+
+    def __beta_changes(self, other: "Estim2pyStatus") -> list[str]:
+        """Names of the beta-only settings that both statuses have and that differ."""
+        changed: list[str] = []
+        for name in ("bias", "output_map", "warp", "ramp"):
+            mine, theirs = getattr(self, name), getattr(other, name)  # pyright: ignore[reportAny]
+            if mine is not None and theirs is not None and mine != theirs:
+                changed.append(name)
+        return changed
 
     @override
     def __ne__(self, other: Any) -> bool:  # pyright: ignore[reportExplicitAny, reportAny]
@@ -175,11 +205,14 @@ class Estim2pyStatus:
         if self.linked != other.linked:
             changeset.append("linked")
 
+        changeset.extend(self.__beta_changes(other))
+
         return tuple(changeset)
     
     @override
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.battery=},{self.a=},{self.b=},{self.c=},{self.d=},{self.mode=},{self.power=},{self.linked=},{self.version})"
+        beta = "".join(f",self.{n}={getattr(self, n)!r}" for n in ("bias", "output_map", "warp", "ramp") if getattr(self, n) is not None)  # pyright: ignore[reportAny]
+        return f"{type(self).__name__}({self.battery=},{self.a=},{self.b=},{self.c=},{self.d=},{self.mode=},{self.power=},{self.linked=}{beta},{self.version})"
 
     @override
     def __bytes__(self) -> bytes:
@@ -188,32 +221,13 @@ class Estim2pyStatus:
 
     @override
     def __str__(self) -> str:
-        return f"230:{self.a}:{self.b}:{self.c}:{self.d}:{self.mode}:{self.power}:{self.linked}:0.2.3"
+        """The status line the box would send for this status, in the format of its protocol (2.106 if unknown)."""
+        return get_protocol(self.protocol or "2.106").format(self)
     
     @staticmethod
-    def from_binary(bin: bytes):
+    def from_binary(bin: bytes) -> "Estim2pyStatus":
         """Return an Estim2pyStatus object from bytes.
 
+        The protocol (2.106, 2.119B or 2.120B firmware) is detected from the number of fields.
         This is mostly internal, but may be useful in some circumstances.  Check unit tests."""
-        converted_string = bin.decode().strip()
-        if not ":" in converted_string:
-            logger.error(f"Got unexpected input.  No colon in [{converted_string}]")
-            raise Estim2pyError("Unexpected input from 2B! Cannot parse into status.", converted_string)
-
-        vals = converted_string.split(":")
-
-        if len(vals) != NUMBER_OF_COLONS:
-            logger.error(f"Got unexpected input.  Wrong Number of Colons [{converted_string}] Expecting {NUMBER_OF_COLONS}")
-            raise Estim2pyError("Splitting failed.  Not enough parts:between:colon", converted_string)
-        
-        return Estim2pyStatus(int(vals[0]),\
-                              int(vals[1]),\
-                              int(vals[2]),\
-                              int(vals[3]),\
-                              int(vals[4]),\
-                              int(vals[5]),\
-                              str(vals[6]),\
-                              int(vals[7]),\
-                              str(vals[8]))
-
-     
+        return detect_protocol(bin).parse(split_status(bin))

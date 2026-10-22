@@ -8,4 +8,8 @@ class Estim2pyError(Exception):
     @override
     def __str__(self):
         # This makes the error message very helpful in your logs
-        return f"{self.args[0]} {self.message} ({self.data if self.data else 'no data'})"  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+        return f"{self.args[0]} ({self.data if self.data else 'no data'})"
+
+
+class Estim2pyUnsupportedError(Estim2pyError):
+    """The connected firmware does not support the requested feature."""

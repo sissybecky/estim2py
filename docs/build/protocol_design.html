@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Design: Supporting the New 2B Firmware Protocols &#8212; estim2py 0.4.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <script src="_static/documentation_options.js?v=6c02275b"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="estim2py package" href="estim2py.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="design-supporting-the-new-2b-firmware-protocols">
+<h1>Design: Supporting the New 2B Firmware Protocols<a class="headerlink" href="#design-supporting-the-new-2b-firmware-protocols" title="Link to this heading">¶</a></h1>
+<p><em>Design proposal, 2026-10-03. Status: implemented in 0.4.0 (see</em>
+<a class="reference internal" href="estim2py.html#module-estim2py.protocol" title="estim2py.protocol"><code class="xref py py-mod docutils literal notranslate"><span class="pre">estim2py.protocol</span></code></a> <em>and</em> <a class="reference internal" href="estim2py.html#estim2py.connection.Estim2pyConnection" title="estim2py.connection.Estim2pyConnection"><code class="xref py py-class docutils literal notranslate"><span class="pre">estim2py.connection.Estim2pyConnection</span></code></a> <em>).</em></p>
+<section id="summary">
+<h2>Summary<a class="headerlink" href="#summary" title="Link to this heading">¶</a></h2>
+<p>Add a small protocol layer so <code class="docutils literal notranslate"><span class="pre">Estim2pyConnection</span></code> works with the original
+firmware (2.106, 9-field status) and the beta firmwares (2.119B, 11 fields;
+2.120B and later, 13 fields), picking the right one automatically from the
+first status reply.</p>
+<ul class="simple">
+<li><p><strong>Detection is free and safe.</strong> Every firmware answers any command, even an
+empty one, with a full status line. The number of colon-separated fields
+(9, 11 or 13) identifies the protocol without sending anything that changes
+the box.</p></li>
+<li><p><strong>Existing code keeps working.</strong> The public methods and <code class="docutils literal notranslate"><span class="pre">Estim2pyStatus</span></code>
+attributes stay as they are; new firmware features are added as new methods
+and optional status fields.</p></li>
+<li><p><strong>Users can override.</strong> A <code class="docutils literal notranslate"><span class="pre">protocol=</span></code> argument forces a protocol when
+auto-detection is not wanted.</p></li>
+</ul>
+</section>
+<section id="background">
+<h2>Background<a class="headerlink" href="#background" title="Link to this heading">¶</a></h2>
+<p>Before this work the protocol was hard-coded, so a box that answered with
+more than 9 fields failed at parse time with
+<code class="docutils literal notranslate"><span class="pre">Estim2pyError(&quot;Splitting</span> <span class="pre">failed.</span> <span class="pre">Not</span> <span class="pre">enough</span> <span class="pre">parts:between:colon&quot;)</span></code>.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Module</p></th>
+<th class="head"><p>What it assumed about the protocol</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">connection.py</span></code></p></td>
+<td><p>9600 8N1; command strings <code class="docutils literal notranslate"><span class="pre">E</span> <span class="pre">L</span> <span class="pre">H</span> <span class="pre">K</span> <span class="pre">J</span> <span class="pre">U</span> <span class="pre">Mnn</span> <span class="pre">Cnnn</span></code> terminated by
+<code class="docutils literal notranslate"><span class="pre">\r</span></code>; reply read until <code class="docutils literal notranslate"><span class="pre">\n</span></code>; <code class="docutils literal notranslate"><span class="pre">MODE_MAX</span> <span class="pre">=</span> <span class="pre">100</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">status.py</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">NUMBER_OF_COLONS</span> <span class="pre">=</span> <span class="pre">9</span></code> (actually the field count); fixed field order
+<code class="docutils literal notranslate"><span class="pre">battery:a:b:c:d:mode:power:linked:version</span></code>; <code class="docutils literal notranslate"><span class="pre">__str__</span></code> emits that
+9-field line</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">simulated.py</span></code></p></td>
+<td><p>Mirrors the 2.106 behaviour; status built with the 9 positional fields</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">modes.py</span></code></p></td>
+<td><p>Knows modes 0–13; <code class="docutils literal notranslate"><span class="pre">get_mode()</span></code> raises <code class="docutils literal notranslate"><span class="pre">KeyError</span></code> for anything else</p></td>
+</tr>
+</tbody>
+</table>
+<p>The test box runs firmware <strong>2.131B</strong> and replies with 13 fields, for example
+<code class="docutils literal notranslate"><span class="pre">762:0:0:100:100:0:L:0:0:0:0:0:2.131B</span></code>. That matches the 2.120B command
+summary, so 2.131B is handled by the 2.120B protocol.</p>
+</section>
+<section id="protocol-comparison">
+<h2>Protocol comparison<a class="headerlink" href="#protocol-comparison" title="Link to this heading">¶</a></h2>
+<p>The beta firmwares keep the framing and the core commands, add new commands,
+change how join is set, and add status fields before the version. 2.120B adds
+two more fields and renumbers the dynamic bias values.</p>
+<section id="status-line">
+<h3>Status line<a class="headerlink" href="#status-line" title="Link to this heading">¶</a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 8.0%" />
+<col style="width: 26.0%" />
+<col style="width: 30.0%" />
+<col style="width: 36.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Index</p></th>
+<th class="head"><p>2.106</p></th>
+<th class="head"><p>2.119B</p></th>
+<th class="head"><p>2.120B and later</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>0</p></td>
+<td><p>Battery</p></td>
+<td><p>Battery (0–999)</p></td>
+<td><p>Battery (0–999)</p></td>
+</tr>
+<tr class="row-odd"><td><p>1–4</p></td>
+<td><p>A, B, C, D (0–200, double the display)</p></td>
+<td><p>Same</p></td>
+<td><p>Same</p></td>
+</tr>
+<tr class="row-even"><td><p>5</p></td>
+<td><p>Mode</p></td>
+<td><p>Mode 0–16 (see <a class="reference internal" href="#modes">Modes</a>)</p></td>
+<td><p>Mode 0–16 (see <a class="reference internal" href="#modes">Modes</a>)</p></td>
+</tr>
+<tr class="row-odd"><td><p>6</p></td>
+<td><p>Power: <code class="docutils literal notranslate"><span class="pre">L</span></code> / <code class="docutils literal notranslate"><span class="pre">H</span></code></p></td>
+<td><p>Power: <code class="docutils literal notranslate"><span class="pre">L</span></code> / <code class="docutils literal notranslate"><span class="pre">H</span></code> / <code class="docutils literal notranslate"><span class="pre">D</span></code> (dynamic)</p></td>
+<td><p>Power: <code class="docutils literal notranslate"><span class="pre">L</span></code> / <code class="docutils literal notranslate"><span class="pre">H</span></code> / <code class="docutils literal notranslate"><span class="pre">D</span></code> (dynamic)</p></td>
+</tr>
+<tr class="row-even"><td><p>7</p></td>
+<td><p>Linked: 0 / 1</p></td>
+<td><p>Dynamic bias: 0 A, 1 B, 2 Average, 3 Max</p></td>
+<td><p>Dynamic bias: 0 Max, 1 A, 2 B, 3 Average</p></td>
+</tr>
+<tr class="row-odd"><td><p>8</p></td>
+<td><p>Version, e.g. <code class="docutils literal notranslate"><span class="pre">2.106</span></code></p></td>
+<td><p>Join: 0 off, 1 joined</p></td>
+<td><p>Join: 0 off, 1 joined</p></td>
+</tr>
+<tr class="row-even"><td><p>9</p></td>
+<td><p>—</p></td>
+<td><p>Output map: 0 A, 1 B, 2 C</p></td>
+<td><p>Output map: 0 A, 1 B, 2 C</p></td>
+</tr>
+<tr class="row-odd"><td><p>10</p></td>
+<td><p>—</p></td>
+<td><p>Version, e.g. <code class="docutils literal notranslate"><span class="pre">2.119B</span></code></p></td>
+<td><p>Warp factor: 0–5 for x1, x2, x4, x8, x16, x32</p></td>
+</tr>
+<tr class="row-even"><td><p>11</p></td>
+<td><p>—</p></td>
+<td><p>—</p></td>
+<td><p>Ramp step: 0–3 for x1 to x4</p></td>
+</tr>
+<tr class="row-odd"><td><p>12</p></td>
+<td><p>—</p></td>
+<td><p>—</p></td>
+<td><p>Version, e.g. <code class="docutils literal notranslate"><span class="pre">2.120B</span></code>, <code class="docutils literal notranslate"><span class="pre">2.131B</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Example</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">666:0:0:100:100:0:L:0:2.106</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">344:10:12:120:116:15:L:0:0:0:2.119B</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">344:10:12:120:116:15:L:0:0:0:0:0:2.120B</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>Index 7 changes meaning between versions, and even between the two betas the
+bias numbers mean different things (the 2.120B document lists this as a “Bias
+Command Correction”). So a raw bias number is only meaningful together with
+its protocol. All firmwares end the reply with <code class="docutils literal notranslate"><span class="pre">\n</span></code>.</p>
+</section>
+<section id="modes">
+<h3>Modes<a class="headerlink" href="#modes" title="Link to this heading">¶</a></h3>
+<p>Only modes 0–2 keep their number. The beta firmwares insert Flo at 3 and Cycle
+and Twist at 12–13, so the same <code class="docutils literal notranslate"><span class="pre">Mnn</span></code> command starts a different program on
+a 2.106 box than on a beta box. Audio modes cannot be selected over serial.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 10.0%" />
+<col style="width: 45.0%" />
+<col style="width: 45.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">M</span></code></p></th>
+<th class="head"><p>2.106</p></th>
+<th class="head"><p>2.119B and later</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>0</p></td>
+<td><p>Pulse</p></td>
+<td><p>Pulse</p></td>
+</tr>
+<tr class="row-odd"><td><p>1</p></td>
+<td><p>Bounce</p></td>
+<td><p>Bounce</p></td>
+</tr>
+<tr class="row-even"><td><p>2</p></td>
+<td><p>Continuous</p></td>
+<td><p>Continuous</p></td>
+</tr>
+<tr class="row-odd"><td><p>3</p></td>
+<td><p>A split</p></td>
+<td><p>Flo (new)</p></td>
+</tr>
+<tr class="row-even"><td><p>4</p></td>
+<td><p>B split</p></td>
+<td><p>A split</p></td>
+</tr>
+<tr class="row-odd"><td><p>5</p></td>
+<td><p>Wave</p></td>
+<td><p>B split</p></td>
+</tr>
+<tr class="row-even"><td><p>6</p></td>
+<td><p>Waterfall</p></td>
+<td><p>Wave</p></td>
+</tr>
+<tr class="row-odd"><td><p>7</p></td>
+<td><p>Squeeze</p></td>
+<td><p>Waterfall</p></td>
+</tr>
+<tr class="row-even"><td><p>8</p></td>
+<td><p>Milk</p></td>
+<td><p>Squeeze</p></td>
+</tr>
+<tr class="row-odd"><td><p>9</p></td>
+<td><p>Throb</p></td>
+<td><p>Milk</p></td>
+</tr>
+<tr class="row-even"><td><p>10</p></td>
+<td><p>Thrust</p></td>
+<td><p>Throb</p></td>
+</tr>
+<tr class="row-odd"><td><p>11</p></td>
+<td><p>Random</p></td>
+<td><p>Thrust</p></td>
+</tr>
+<tr class="row-even"><td><p>12</p></td>
+<td><p>Step</p></td>
+<td><p>Cycle (new)</p></td>
+</tr>
+<tr class="row-odd"><td><p>13</p></td>
+<td><p>Training</p></td>
+<td><p>Twist (new)</p></td>
+</tr>
+<tr class="row-even"><td><p>14</p></td>
+<td><p>—</p></td>
+<td><p>Random</p></td>
+</tr>
+<tr class="row-odd"><td><p>15</p></td>
+<td><p>—</p></td>
+<td><p>Step</p></td>
+</tr>
+<tr class="row-even"><td><p>16</p></td>
+<td><p>—</p></td>
+<td><p>Training</p></td>
+</tr>
+</tbody>
+</table>
+<p>Flo is a continuous mode: C controls the feel of channel A and D controls the
+feel of channel B. Cycle and Twist reuse Thrust’s C/D meanings and description
+for now.</p>
+</section>
+<section id="commands">
+<h3>Commands<a class="headerlink" href="#commands" title="Link to this heading">¶</a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 22.0%" />
+<col style="width: 22.0%" />
+<col style="width: 22.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Command</p></th>
+<th class="head"><p>2.106</p></th>
+<th class="head"><p>2.119B</p></th>
+<th class="head"><p>2.120B and later</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Cnnn</span></code>, <code class="docutils literal notranslate"><span class="pre">E</span></code>, <code class="docutils literal notranslate"><span class="pre">L</span></code>, <code class="docutils literal notranslate"><span class="pre">H</span></code>, <code class="docutils literal notranslate"><span class="pre">K</span></code>, <code class="docutils literal notranslate"><span class="pre">Mnn</span></code></p></td>
+<td><p>Yes</p></td>
+<td><p>Yes (<code class="docutils literal notranslate"><span class="pre">E</span></code> also resets baud to 9600)</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p>Join on / off</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">J</span></code> / <code class="docutils literal notranslate"><span class="pre">U</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">J1</span></code> / <code class="docutils literal notranslate"><span class="pre">J0</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">J1</span></code> / <code class="docutils literal notranslate"><span class="pre">J0</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">C+</span></code> / <code class="docutils literal notranslate"><span class="pre">C-</span></code> step a channel by 1</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Y</span></code> dynamic power</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Qn</span></code> dynamic bias</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes (new numbering)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">On</span></code> output map</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">V</span></code> version (returns status)</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Wn</span></code> warp factor</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Rn</span></code> ramp step</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Z</span></code> switch to 57600 baud</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>No (removed)</p></td>
+</tr>
+</tbody>
+</table>
+<p>All use 9600 8N1, uppercase ASCII, <code class="docutils literal notranslate"><span class="pre">\r</span></code> terminated, one command at a time.
+The beta documents state every command, even an unknown one, gets a full
+status reply. On 2.120B a buffer overrun replies <code class="docutils literal notranslate"><span class="pre">ERR</span></code> instead of a status
+line.</p>
+</section>
+<section id="behaviour-differences">
+<h3>Behaviour differences<a class="headerlink" href="#behaviour-differences" title="Link to this heading">¶</a></h3>
+<p>Changing power level resets other settings differently, and setting a mode
+resets the channels. Seen on hardware:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 35.0%" />
+<col style="width: 35.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Command</p></th>
+<th class="head"><p>2.106</p></th>
+<th class="head"><p>2.131B</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">H</span></code> (to high)</p></td>
+<td><p>A and B to 0, C and D kept</p></td>
+<td><p>A and B to 0, C and D kept</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">L</span></code> (to low)</p></td>
+<td><p>A and B to 0, C and D back to 100</p></td>
+<td><p>A and B to 0, C and D kept</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Y</span></code> (to dynamic)</p></td>
+<td><p>—</p></td>
+<td><p>A and B to 0 (they were already 0 in the test), bias to 0 (Max)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Mnn</span></code> (new mode)</p></td>
+<td><p>C and D back to 100</p></td>
+<td><p>C and D back to 100; link, bias, output map, warp and ramp kept</p></td>
+</tr>
+</tbody>
+</table>
+<p>The 2.106 column comes from the existing tests. The simulator follows this
+table; for 2.119B it assumes the 2.131B behaviour.</p>
+</section>
+</section>
+<section id="detection-strategy">
+<h2>Detection strategy<a class="headerlink" href="#detection-strategy" title="Link to this heading">¶</a></h2>
+<p>On connect, send an empty command (just <code class="docutils literal notranslate"><span class="pre">\r</span></code>, which <code class="docutils literal notranslate"><span class="pre">get_status()</span></code> already
+does), split the reply on <code class="docutils literal notranslate"><span class="pre">:</span></code> and choose the protocol by field count; the
+version string is a cross-check, not the primary key.</p>
+<ul class="simple">
+<li><p><strong>Why the empty command.</strong> It changes nothing on any firmware. <code class="docutils literal notranslate"><span class="pre">E</span></code> would
+reset the box, <code class="docutils literal notranslate"><span class="pre">V</span></code> does not exist on 2.106, and <code class="docutils literal notranslate"><span class="pre">Z</span></code> changes the baud
+rate, so none of those are used for probing.</p></li>
+<li><p><strong>Why field count first.</strong> It is the one difference that is structural and
+guaranteed by every document. Version strings like <code class="docutils literal notranslate"><span class="pre">2.106</span></code>, <code class="docutils literal notranslate"><span class="pre">2.119B</span></code> and
+<code class="docutils literal notranslate"><span class="pre">2.131B</span></code> are less predictable across future releases.</p></li>
+<li><p><strong>Cross-check.</strong> If a protocol declares a version pattern and the version
+field does not match, log a warning but keep the count-based choice. The
+2.120B protocol accepts 2.120 to 2.139.</p></li>
+<li><p><strong>Flush first, retry once.</strong> The box sometimes sends an extra status line,
+and a reply with an unknown field count is often a partial line left in the
+buffer. Flush input before probing, and probe once more before giving up.</p></li>
+<li><p><strong>Box not answering.</strong> A box in its menu does not answer serial commands, so
+an empty reply should raise an error that suggests leaving the menu.</p></li>
+<li><p><strong>Fail clearly.</strong> After the retry, raise
+<code class="docutils literal notranslate"><span class="pre">Estim2pyError(&quot;Unknown</span> <span class="pre">2B</span> <span class="pre">protocol&quot;,</span> <span class="pre">raw_reply)</span></code> so the user sees the
+exact line the box sent.</p></li>
+<li><p><strong>Remember the result.</strong> Detection runs once per connection;
+<code class="docutils literal notranslate"><span class="pre">connection.protocol</span></code> exposes what was chosen. After an <code class="docutils literal notranslate"><span class="pre">E</span></code> the protocol
+does not change, so no re-detection is needed.</p></li>
+</ul>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>Open serial port --&gt; Send empty command --&gt; Field count?
+                          ^                   |  9 fields --&gt; use 2.106 protocol
+                          |                   | 11 fields --&gt; use 2.119B protocol
+                          |                   | 13 fields --&gt; use 2.120B protocol
+                          |                   | other
+                          |                   v
+                          +--- first time -- Flush input, retry once
+                                              | still unknown
+                                              v
+                                             Raise Estim2pyError
+</pre></div>
+</div>
+<p>With <code class="docutils literal notranslate"><span class="pre">protocol=</span></code> given, the probe is skipped and the named protocol is used
+directly.</p>
+</section>
+<section id="architecture">
+<h2>Architecture<a class="headerlink" href="#architecture" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">protocol.py</span></code> holds one class per firmware; the connection asks its protocol
+how to spell each command and how to parse each reply, and nothing else in the
+package knows field positions.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 65.0%" />
+<col style="width: 15.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Component</p></th>
+<th class="head"><p>Change</p></th>
+<th class="head"><p>Step</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">protocol.py</span></code> (new)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Estim2pyProtocol</span></code> base class, <code class="docutils literal notranslate"><span class="pre">Legacy2106Protocol</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Beta2119Protocol</span></code>, <code class="docutils literal notranslate"><span class="pre">Beta2120Protocol</span></code>, a <code class="docutils literal notranslate"><span class="pre">PROTOCOLS</span></code> registry
+keyed by field count, <code class="docutils literal notranslate"><span class="pre">split_status(raw)</span></code> and
+<code class="docutils literal notranslate"><span class="pre">detect_protocol(raw)</span></code></p></td>
+<td><p>1 (done)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">status.py</span></code></p></td>
+<td><p>Optional <code class="docutils literal notranslate"><span class="pre">bias</span></code>, <code class="docutils literal notranslate"><span class="pre">output_map</span></code>, <code class="docutils literal notranslate"><span class="pre">warp</span></code>, <code class="docutils literal notranslate"><span class="pre">ramp</span></code> and <code class="docutils literal notranslate"><span class="pre">protocol</span></code>
+fields (default <code class="docutils literal notranslate"><span class="pre">None</span></code>). <code class="docutils literal notranslate"><span class="pre">from_binary()</span></code> delegates to
+<code class="docutils literal notranslate"><span class="pre">detect_protocol()</span></code>. <code class="docutils literal notranslate"><span class="pre">NUMBER_OF_COLONS</span></code> is gone</p></td>
+<td><p>1 (done)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">exceptions.py</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Estim2pyError.__str__</span></code> fixed so errors show the raw line
+(it used to print <code class="docutils literal notranslate"><span class="pre">&lt;exception</span> <span class="pre">str()</span> <span class="pre">failed&gt;</span></code>)</p></td>
+<td><p>1 (done)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">connection.py</span></code></p></td>
+<td><p>New <code class="docutils literal notranslate"><span class="pre">protocol=&quot;auto&quot;</span></code> argument and <code class="docutils literal notranslate"><span class="pre">connection.protocol</span></code>.
+Replies are parsed with the connection’s protocol.
+<code class="docutils literal notranslate"><span class="pre">link()</span></code>/<code class="docutils literal notranslate"><span class="pre">unlink()</span></code> send <code class="docutils literal notranslate"><span class="pre">protocol.join_command(on)</span></code>. An <code class="docutils literal notranslate"><span class="pre">ERR</span></code>
+reply is resent once; an empty reply raises an error that mentions
+the menu</p></td>
+<td><p>2 (done)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">connection.py</span></code></p></td>
+<td><p>New methods gated by <code class="docutils literal notranslate"><span class="pre">protocol.supports(feature)</span></code>, and a
+firmware-aware <code class="docutils literal notranslate"><span class="pre">set_to_status()</span></code></p></td>
+<td><p>3 (done)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">protocol.py</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Estim2pyBias</span></code> and each protocol’s bias numbering;
+<code class="docutils literal notranslate"><span class="pre">format(status)</span></code> writes a status line in the protocol’s format</p></td>
+<td><p>3 (done)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">simulated.py</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Estim2pySimulatedConnection(protocol=&quot;2.106&quot;)</span></code> simulates any
+firmware. It replaces only the serial exchange: commands are
+interpreted and answered with a status line, so the simulator runs
+the real connection code, including the <a class="reference internal" href="#behaviour-differences">Behaviour differences</a></p></td>
+<td><p>3 (done)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">modes.py</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Estim2pyMode.modes</span></code> (2.106) and <code class="docutils literal notranslate"><span class="pre">beta_modes</span></code> (2.119B and later).
+<code class="docutils literal notranslate"><span class="pre">get_mode()</span></code>, <code class="docutils literal notranslate"><span class="pre">get_id()</span></code> and <code class="docutils literal notranslate"><span class="pre">id_names()</span></code> take a protocol name;
+<code class="docutils literal notranslate"><span class="pre">Estim2pyStatus.get_mode()</span></code> uses the status’s protocol. An unknown
+number returns an “unknown” mode instead of raising <code class="docutils literal notranslate"><span class="pre">KeyError</span></code></p></td>
+<td><p>3 (done)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">exceptions.py</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Estim2pyUnsupportedError(Estim2pyError)</span></code> for a feature the firmware
+lacks</p></td>
+<td><p>3 (done)</p></td>
+</tr>
+</tbody>
+</table>
+<p>Each protocol class declares its field count, power letters, optional features
+and version pattern, and implements <code class="docutils literal notranslate"><span class="pre">_build()</span></code> (fields to status) and
+<code class="docutils literal notranslate"><span class="pre">join_command()</span></code>. The shared <code class="docutils literal notranslate"><span class="pre">parse()</span></code> checks the field count, wraps
+non-numeric fields and unknown power letters in <code class="docutils literal notranslate"><span class="pre">Estim2pyError</span></code>, and warns
+on an unexpected version. See <a class="reference internal" href="estim2py.html#module-estim2py.protocol" title="estim2py.protocol"><code class="xref py py-mod docutils literal notranslate"><span class="pre">estim2py.protocol</span></code></a> for the code.</p>
+<p>The beta parsers store the join field (index 8) in the existing <code class="docutils literal notranslate"><span class="pre">linked</span></code>
+attribute, so <code class="docutils literal notranslate"><span class="pre">is_linked()</span></code> and equality mean the same thing on every box.</p>
+</section>
+<section id="public-api-and-compatibility">
+<h2>Public API and compatibility<a class="headerlink" href="#public-api-and-compatibility" title="Link to this heading">¶</a></h2>
+<p>Every existing call keeps its signature and behaviour on a 2.106 box; on a
+beta box the same calls just work, and the new features are opt-in methods.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">con</span> <span class="o">=</span> <span class="n">Estim2pyConnection</span><span class="p">(</span><span class="s2">"/dev/ttyUSB0"</span><span class="p">)</span>                    <span class="c1"># auto-detect (default)</span>
+<span class="n">con</span> <span class="o">=</span> <span class="n">Estim2pyConnection</span><span class="p">(</span><span class="s2">"/dev/ttyUSB0"</span><span class="p">,</span> <span class="n">protocol</span><span class="o">=</span><span class="s2">"2.106"</span><span class="p">)</span>  <span class="c1"># force, no probe</span>
+<span class="n">con</span><span class="o">.</span><span class="n">protocol</span><span class="o">.</span><span class="n">name</span>        <span class="c1"># "2.106", "2.119B" or "2.120B"</span>
+</pre></div>
+</div>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 35.0%" />
+<col style="width: 30.0%" />
+<col style="width: 35.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>New method</p></th>
+<th class="head"><p>Command</p></th>
+<th class="head"><p>Without firmware support</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dynamic()</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Y</span></code></p></td>
+<td><p>Raises <code class="docutils literal notranslate"><span class="pre">Estim2pyUnsupportedError</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">set_bias(bias)</span></code> (<code class="docutils literal notranslate"><span class="pre">Estim2pyBias.A</span></code>, <code class="docutils literal notranslate"><span class="pre">B</span></code>, <code class="docutils literal notranslate"><span class="pre">AVERAGE</span></code>, <code class="docutils literal notranslate"><span class="pre">MAX</span></code>)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Qn</span></code>, number from the protocol’s bias numbering</p></td>
+<td><p>Raises</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">set_output_map(n)</span></code> (0–2)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">On</span></code></p></td>
+<td><p>Raises</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">step_channel(ch,</span> <span class="pre">+1</span> <span class="pre">/</span> <span class="pre">-1)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">C+</span></code> / <code class="docutils literal notranslate"><span class="pre">C-</span></code></p></td>
+<td><p>Raises</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">set_warp(n)</span></code> (0–5)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Wn</span></code></p></td>
+<td><p>Raises (2.120B and later only)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">set_ramp(n)</span></code> (0–3)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Rn</span></code></p></td>
+<td><p>Raises (2.120B and later only)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">version()</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">V</span></code></p></td>
+<td><p>Falls back to <code class="docutils literal notranslate"><span class="pre">get_status()</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">set_mode_by_name(name)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Mnn</span></code>, number looked up in the box’s mode table</p></td>
+<td><p>Works everywhere</p></td>
+</tr>
+</tbody>
+</table>
+<p>Because the bias numbering differs between 2.119B and 2.120B, <code class="docutils literal notranslate"><span class="pre">set_bias()</span></code>
+takes an <code class="docutils literal notranslate"><span class="pre">Estim2pyBias</span></code> rather than a raw number, and <code class="docutils literal notranslate"><span class="pre">status.get_bias()</span></code>
+translates the raw <code class="docutils literal notranslate"><span class="pre">status.bias</span></code> through the status’s protocol.</p>
+<p>Status additions: <code class="docutils literal notranslate"><span class="pre">status.bias</span></code>, <code class="docutils literal notranslate"><span class="pre">status.output_map</span></code>, <code class="docutils literal notranslate"><span class="pre">status.warp</span></code>,
+<code class="docutils literal notranslate"><span class="pre">status.ramp</span></code>, <code class="docutils literal notranslate"><span class="pre">status.protocol</span></code> (<code class="docutils literal notranslate"><span class="pre">None</span></code> where the firmware does not
+report them), <code class="docutils literal notranslate"><span class="pre">get_bias()</span></code> and <code class="docutils literal notranslate"><span class="pre">is_dynamic_power()</span></code>. <code class="docutils literal notranslate"><span class="pre">__eq__</span></code> and
+<code class="docutils literal notranslate"><span class="pre">changes()</span></code> compare the new fields only when both sides have them, so 2.106
+comparisons are unchanged.</p>
+<p>Existing behaviour that changed in step 3:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Estim2pyStatus.__str__</span></code> and <code class="docutils literal notranslate"><span class="pre">__bytes__</span></code> write the line for
+<code class="docutils literal notranslate"><span class="pre">self.protocol</span></code> (2.106 when unknown) with the real battery and version, so
+<code class="docutils literal notranslate"><span class="pre">from_binary(bytes(status))</span></code> round-trips on every protocol. They used to
+write a 9-field line with a fixed battery of 230 and version 0.2.3.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">set_to_status()</span></code> handles <code class="docutils literal notranslate"><span class="pre">D</span></code> power; on beta firmware it sets link, and
+bias, output map, warp and ramp where both firmwares have them. When the
+status comes from a firmware with a different mode numbering it sets the
+mode by name, and raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> if this firmware lacks that mode.
+It no longer changes the status passed in (it used to set its <code class="docutils literal notranslate"><span class="pre">linked</span></code>
+to 0); on 2.106 it still expects link to be off.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">set_mode(n)</span></code> keeps sending the raw number; <code class="docutils literal notranslate"><span class="pre">set_mode_by_name()</span></code> is the
+firmware-independent way.</p></li>
+</ul>
+<p>The 2.119B <code class="docutils literal notranslate"><span class="pre">Z</span></code> high-speed command is left out: it changes the serial baud
+rate under the connection, needs <code class="docutils literal notranslate"><span class="pre">E</span></code> or a power cycle to undo, and was
+removed in 2.120B.</p>
+</section>
+<section id="testing-plan">
+<h2>Testing plan<a class="headerlink" href="#testing-plan" title="Link to this heading">¶</a></h2>
+<p>Most of the change is testable without hardware, because detection and
+parsing work on raw byte strings.</p>
+<ul class="simple">
+<li><p><strong>Parsing (done):</strong> each protocol parses its documented example, the real
+2.131B reply, <code class="docutils literal notranslate"><span class="pre">D</span></code> power, and every bias, map, warp and ramp value.</p></li>
+<li><p><strong>Detection (done):</strong> 9 fields → 2.106, 11 → 2.119B, 13 → 2.120B; other
+counts and non-status replies raise <code class="docutils literal notranslate"><span class="pre">Estim2pyError</span></code> carrying the raw line;
+a version mismatch logs a warning.</p></li>
+<li><p><strong>Round trip (done):</strong> <code class="docutils literal notranslate"><span class="pre">str(status)</span></code> reproduces the line it was parsed
+from, for every protocol.</p></li>
+<li><p><strong>Connection without a port (done):</strong> mock <code class="docutils literal notranslate"><span class="pre">serial.Serial</span></code> so <code class="docutils literal notranslate"><span class="pre">read_until</span></code>
+returns a canned line, and assert the bytes written (<code class="docutils literal notranslate"><span class="pre">J</span></code>/<code class="docutils literal notranslate"><span class="pre">U</span></code> vs
+<code class="docutils literal notranslate"><span class="pre">J1</span></code>/<code class="docutils literal notranslate"><span class="pre">J0</span></code>, <code class="docutils literal notranslate"><span class="pre">Qn</span></code>, <code class="docutils literal notranslate"><span class="pre">On</span></code>, <code class="docutils literal notranslate"><span class="pre">Wn</span></code>, <code class="docutils literal notranslate"><span class="pre">Rn</span></code>), the retry-once behaviour and
+<code class="docutils literal notranslate"><span class="pre">ERR</span></code> handling.</p></li>
+<li><p><strong>Simulator (done):</strong> the existing simulator tests still pass on 2.106;
+new tests run every simulated firmware, including <code class="docutils literal notranslate"><span class="pre">set_to_status()</span></code> from
+each firmware to each other one.</p></li>
+<li><p><strong>Hardware (done):</strong> the expected replies in the hardware tests depend on
+<code class="docutils literal notranslate"><span class="pre">con.protocol</span></code>: what <code class="docutils literal notranslate"><span class="pre">L</span></code> does to C and D (see <a class="reference internal" href="#behaviour-differences">Behaviour
+differences</a>), and modes above 13 and linking, which are expected
+failures on 2.106 only. A beta-settings test checks the new commands and
+the simulator’s assumptions with A and B kept at 0. All pass on the 2.131B
+box.
+<code class="docutils literal notranslate"><span class="pre">test_timeout</span></code> still needs a look: it uses a <code class="docutils literal notranslate"><span class="pre">con</span></code> it never creates, so
+it fails with an <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code> and is reported as an expected failure
+for the wrong reason.</p></li>
+<li><p><strong>Modes (done):</strong> every number in both mode tables resolves to the expected name,
+and <code class="docutils literal notranslate"><span class="pre">set_mode_by_name(&quot;step&quot;)</span></code> sends <code class="docutils literal notranslate"><span class="pre">M12</span></code> on 2.106 and <code class="docutils literal notranslate"><span class="pre">M15</span></code> on beta
+firmware.</p></li>
+</ul>
+</section>
+<section id="open-questions-and-rollout">
+<h2>Open questions and rollout<a class="headerlink" href="#open-questions-and-rollout" title="Link to this heading">¶</a></h2>
+<p>Resolved:</p>
+<ul class="simple">
+<li><p>Every firmware ends replies with <code class="docutils literal notranslate"><span class="pre">\n</span></code>.</p></li>
+<li><p>The beta mode list is known (see <a class="reference internal" href="#modes">Modes</a>), including what C and D do in
+the new Flo mode.</p></li>
+<li><p>2.106 has no <code class="docutils literal notranslate"><span class="pre">V</span></code> command, so <code class="docutils literal notranslate"><span class="pre">version()</span></code> falls back to <code class="docutils literal notranslate"><span class="pre">get_status()</span></code>
+there.</p></li>
+<li><p>The test box is 2.131B and speaks the 13-field 2.120B protocol.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">J1</span></code>/<code class="docutils literal notranslate"><span class="pre">J0</span></code> link and unlink the controls on 2.131B: the join field
+(index 8) changes and the box shows the controls as linked. The library’s
+<code class="docutils literal notranslate"><span class="pre">link()</span></code> fails on beta boxes only because it sends the 2.106 <code class="docutils literal notranslate"><span class="pre">J</span></code>;
+step 2 switches it to <code class="docutils literal notranslate"><span class="pre">join_command()</span></code>.</p></li>
+</ul>
+<p>Still open:</p>
+<ul class="simple">
+<li><p>Does 2.119B reset C and D on <code class="docutils literal notranslate"><span class="pre">L</span></code> like 2.106, or keep them like 2.131B?
+No 2.119B box is available to check.</p></li>
+</ul>
+<p>Rollout, one pull request each:</p>
+<ol class="arabic simple">
+<li><p><strong>Done.</strong> Add <code class="docutils literal notranslate"><span class="pre">protocol.py</span></code> with the parsers and detection, plus the
+parsing and detection tests. <code class="docutils literal notranslate"><span class="pre">from_binary()</span></code> uses it; no connection
+changes yet.</p></li>
+<li><p><strong>Done.</strong> Wire <code class="docutils literal notranslate"><span class="pre">protocol=</span></code> and detection into <code class="docutils literal notranslate"><span class="pre">Estim2pyConnection</span></code>, switch
+<code class="docutils literal notranslate"><span class="pre">link()</span></code>/<code class="docutils literal notranslate"><span class="pre">unlink()</span></code> to <code class="docutils literal notranslate"><span class="pre">join_command()</span></code>, handle <code class="docutils literal notranslate"><span class="pre">ERR</span></code> and empty
+replies, and make the hardware tests protocol-aware.</p></li>
+<li><p><strong>Done.</strong> Add the beta-only methods, <code class="docutils literal notranslate"><span class="pre">get_bias()</span></code>/<code class="docutils literal notranslate"><span class="pre">set_bias()</span></code>, the
+remaining status changes, per-firmware mode tables and simulator support.</p></li>
+<li><p><strong>Done.</strong> Update the user docs (<a class="reference internal" href="usage.html"><span class="doc">Usage</span></a>) and set the version to 0.4.0
+(new public API, nothing removed).</p></li>
+</ol>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">estim2py</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="usage.html">Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html#installing">Installing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html#api-quick-ref">API Quick Ref</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usage.html#misc">Misc</a></li>
+<li class="toctree-l1"><a class="reference internal" href="estim2py.html">estim2py package</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Design: Supporting the New 2B Firmware Protocols</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#summary">Summary</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#background">Background</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#protocol-comparison">Protocol comparison</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#status-line">Status line</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#modes">Modes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#commands">Commands</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#behaviour-differences">Behaviour differences</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#detection-strategy">Detection strategy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#architecture">Architecture</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#public-api-and-compatibility">Public API and compatibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#testing-plan">Testing plan</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#open-questions-and-rollout">Open questions and rollout</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="estim2py.html" title="previous chapter">estim2py package</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2026, Sissy Becky.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 9.1.0</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/protocol_design.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
