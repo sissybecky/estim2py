@@ -1,3 +1,49 @@
+# v 0.4.1
+## Bugfixes
+- Deleting an Estim2pyConnection whose serial port is already closed (for example after your own disconnect()) no longer prints an ignored PortNotOpenError.
+
+# v 0.4.0
+Support for the beta firmwares.  The 2B has had three serial protocols, and the right one is now picked automatically:
+- 2.106, the original firmware (9 field status)
+- 2.119B (11 fields)
+- 2.120B and later, e.g. 2.131B (13 fields)
+
+See the design doc in the documentation for all the gory details.
+
+## Breaking Changes
+- Requires Python 3.12 or newer.  It already needed 3.12 (typing.override and the `type` statement), now pyproject.toml says so.
+- str() and bytes() of an Estim2pyStatus write the status line in the format of its firmware, with the real battery and version.  They used to write a 9 field line with battery 230 and version 0.2.3.
+- set_to_status() no longer changes the status you pass in.  It used to set its linked to 0.
+- Estim2pyMode.get_mode() returns a mode named "unknown" for a number it does not know, instead of raising KeyError.
+
+## Additions
+- Estim2pyConnection detects the firmware when it connects.  connection.protocol tells you which one.  Pass protocol="2.106", "2.119B" or "2.120B" to skip the detection.
+- Beta firmware commands on Estim2pyConnection: dynamic(), set_bias(), set_output_map(), step_channel(), set_warp() and set_ramp() (the last two 2.120B and later).  On firmware without them they raise the new Estim2pyUnsupportedError.
+- set_mode_by_name("step") sends the right mode number for the box.  The betas number their modes differently: step is 12 on 2.106 and 15 on the betas.
+- version() asks the box for its version, or just its status on 2.106.
+- Estim2pyBias (A, B, AVERAGE, MAX) for set_bias() and status.get_bias().  The betas number the bias settings differently, this does the translation.
+- Estim2pyStatus has bias, output_map, warp, ramp and protocol members (None when the firmware does not report them), get_bias() and is_dynamic_power().
+- Estim2pyMode knows the beta modes, including the new flo, cycle and twist.  get_mode(), id_names() and the new get_id() take a protocol name.
+- New module estim2py.protocol with a class per firmware.
+
+## Changes
+- link() and unlink() send J1/J0 on beta firmware, and work there.  Still no luck on 2.106.
+- set_to_status() works between firmwares: modes are matched by name and the bias by setting.  It also handles dynamic power, link, and the beta settings.
+- Status equality and changes() compare bias, output map, warp and ramp when both statuses have them.
+- An ERR reply from the box (buffer overrun) is resent once.
+- No reply raises "No reply from 2B.  Is it switched on and out of its menu?".  The box ignores serial commands while you are in its menu.
+
+### Estim2pySimulatedConnection
+- Simulates any firmware: Estim2pySimulatedConnection("2.120B").
+- Rewritten to interpret the commands, so it runs the real connection code.  It follows what a 2.131B box does: low power keeps C and D (2.106 resets them), a new mode resets the channels but keeps the other settings, and dynamic power resets the bias.
+
+## Bugfixes
+- Estim2pyError printed "<exception str() failed>" instead of its message.  Now it shows the message and the line the box sent.
+- The usage docs called methods that don't exist and said mode 5 is milk.  It's wave.
+
+### Internals
+- Tests for every protocol, mocked serial tests for the connection, and hardware tests that adjust to the detected firmware.
+
 # v 0.3
 ## Breaking Changes 
 - Estim2pyStatus methods are now all get_foo or is_foo.
